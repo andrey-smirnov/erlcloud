@@ -3,8 +3,12 @@
 -include_lib("erlcloud/include/erlcloud.hrl").
 -include_lib("erlcloud/include/erlcloud_aws.hrl").
 
--define(API_VERSION, "2014-10-31").
+-define(API_VERSION, "2010-05-15").
 
+-type params() :: proplists:proplist().
+-type cloudformation_list() :: proplists:proplist().
+
+%% Cloud Formation API Functions
 -export ([list_stacks_all/2,
 		  list_stacks/3,
 		  list_stack_resources/2,
@@ -20,8 +24,9 @@
 		  describe_stack_events_all/2,
 		  describe_stack_events/3]).
 
--type params() :: proplists:proplist().
--type cloudformation_list() :: proplists:proplist().
+%%==============================================================================
+%% Cloud Formation API Functions
+%%==============================================================================
 
 -spec list_stacks_all(params(), aws_config()) -> {ok, cloudformation_list()}.
 list_stacks_all(Params, Config = #aws_config{}) ->
@@ -136,7 +141,10 @@ describe_account_limits_all(Config = #aws_config{}) ->
 describe_account_limits(Config = #aws_config{}, NextToken) ->
 	cloudformation_request(Config, "DescribeAccountLimits", [{"NextToken", NextToken}]).
 
--spec cloudformation_request(aws_config(), string(), params()) -> {ok, cloudformation_list()}.
+%%==============================================================================
+%% Internal functions
+%%==============================================================================
+
 cloudformation_request(Config = #aws_config{}, Action, ExtraParams) ->
 
 	QParams = [
@@ -145,3 +153,5 @@ cloudformation_request(Config = #aws_config{}, Action, ExtraParams) ->
 		| ExtraParams],
 
 	erlcloud_aws:aws_request_xml4(post, Config#aws_config.cloudformation_host, "/", QParams, "cloudformation", Config).
+
+
