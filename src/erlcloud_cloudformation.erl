@@ -37,8 +37,8 @@ list_stacks_all(Params, Config = #aws_config{}) ->
 				{io_lib:format("StackStatusFilter.member.~p", [N]), Filter}
 			end
 		end, Params),
-
-	cloudformation_request(Config, "ListStacks", ExtraParams).
+	{ok, XmlNode} = cloudformation_request(Config, "ListStacks", ExtraParams),
+	extract_stack_summaries(xmerl_xpath:string("/ListStacksResponse/ListStacksResult", XmlNode)).
 
 -spec list_stacks(params(), string(), aws_config()) -> {ok, cloudformation_list()}.
 list_stacks(Params, NextNode, Config = #aws_config{}) ->
@@ -153,5 +153,22 @@ cloudformation_request(Config = #aws_config{}, Action, ExtraParams) ->
 		| ExtraParams],
 
 	erlcloud_aws:aws_request_xml4(post, Config#aws_config.cloudformation_host, "/", QParams, "cloudformation", Config).
+
+extract_stack_summaries(XmlNode) ->
+	lists:map(fun(T) -> erlcloud_xml:decode([{summaries, "StackSummaries", {optional_map, fun extract_stacks/1}}], T) end, XmlNode).
+
+extract_stacks(XmlNode) ->
+	erlcloud_xml:decode([
+			{member, "member", {optional_map, fun extract_stack/1}}
+		], XmlNode).
+
+extract_stack(XmlNode) ->
+	erlcloud_xml:decode([
+		{stack_id, "StackId", optional_text},
+		{stack_status, "StackStatus", optional_text},
+		{stack_name, "StackName", optional_text},
+		{creation_time, "CreationTime", optional_text},
+		{template_description, "TemplateDescription", optional_text},
+		{resource_types, "ResourceTypes", list}], XmlNode).
 
 
