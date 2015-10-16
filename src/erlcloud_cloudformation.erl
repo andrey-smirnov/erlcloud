@@ -12,7 +12,7 @@
 -export ([list_stacks_all/2,
           list_stacks/2,
           list_stack_resources_all/2,
-          list_stack_resources/3,
+          list_stack_resources/2,
           describe_stack_resources/2,
           describe_stack_resource/3,
           describe_stacks_all/2,
@@ -54,17 +54,20 @@ list_stacks(Params, Config = #aws_config{}) ->
 -spec list_stack_resources_all(string(), aws_config()) -> {ok, cloudformation_list()}.
 list_stack_resources_all(Params, Config = #aws_config{}) ->
     % cloudformation_request(Config, "ListStackResources", [{"StackName", StackName}]).
-    list_all(fun list_stack_resources/3, Params, Config, []).
+    list_all(fun list_stack_resources/2, Params, Config, []).
 
--spec list_stack_resources(string(), string(), aws_config()) -> {ok, cloudformation_list()}.
-list_stack_resources(NextToken, Params, Config = #aws_config{}) ->
-    cloudformation_request(Config, "ListStackResources", [{"NextToken", NextToken} 
-                                                          | Params
-                                                         ]).
+-spec list_stack_resources(params(), aws_config()) -> {ok, cloudformation_list()}.
+list_stack_resources(Params, Config = #aws_config{}) ->
+    {ok, XmlNode} = cloudformation_request(Config, "ListStackResources", Params),
+
+    NextToken = erlcloud_xml:get_text("/ListStackResourcesResponse/ListStackResourcesResult/NextToken", XmlNode, undefined),
+
+    [{next_token, NextToken}, extract_list_stack_resources(xmerl_xpath:string("/ListStackResourcesResponse/ListStackResourcesResult", XmlNode))].
 
 -spec describe_stack_resources(string(), aws_config()) -> {ok, cloudformation_list()}.
-describe_stack_resources(StackName, Config = #aws_config{}) ->
-    cloudformation_request(Config, "DescribeStackResources", [{"StackName", StackName}]).
+describe_stack_resources(Params, Config = #aws_config{}) ->
+    {ok, XmlNode} = cloudformation_request(Config, "DescribeStackResources", Params),
+    extract_stack_resources_members(xmerl_xpath:string("/DescribeStackResourcesResponse/DescribeStackResourcesResult", XmlNode)).
 
 -spec describe_stack_resource(string(), string(), aws_config) -> {ok, cloudformation_list()}.
 describe_stack_resource(StackName, LogicalResourceId, Config = #aws_config{}) ->
@@ -186,3 +189,38 @@ extract_stack(XmlNode) ->
         {template_description, "TemplateDescription", optional_text},
         {resource_types, "ResourceTypes", list}], XmlNode).
 
+extract_list_stack_resources(XmlNodes) ->
+    lists:map(fun(T) -> erlcloud_xml:decode([
+        {summaries, "StackResourceSummaries", {optional_map, fun extract_list_resources/1}}
+        ], T) end, XmlNodes).
+
+extract_list_resources(XmlNode) ->
+    erlcloud_xml:decode([
+        {member, "member", {optional_map, fun extract_list_resource/1}}
+        ], XmlNode).
+
+extract_list_resource(XmlNode) ->
+    erlcloud_xml:decode([
+        {resource_status, "ResourceStatus", optional_text},
+        {logical_resource_id, "LogicalResourceId", optional_text},
+        {last_updated_timestamp, "LastUpdatedTimestamp", optional_text},
+        {physical_resource_id, "PhysicalResourceId", optional_text},
+        {resource_type, "ResourceType", optional_text}
+        ], XmlNode).
+
+extract_stack_resources_members(XmlNodes) ->
+    lists:map(fun(T) -> erlcloud_xml:decode([{resources, "StackResources", {optional_map, fun extract_member_resources/1}}], T) end, XmlNodes).
+
+extract_member_resources(XmlNode) ->
+    erlcloud_xml:decode([{member, "member", {optional_map, fun extract_resource/1}}], XmlNode).
+
+extract_resource(XmlNode) ->
+    erlcloud_xml:decode([
+        {stack_id, "StackId", optional_text},
+        {stack_name, "StackName", optional_text},
+        {logical_resource_id, "LogicalResourceId", optional_text},
+        {physical_resource_id, "PhysicalResourceId", optional_text},
+        {resource_type, "ResourceType", optional_text},
+        {timestamp, "Timestamp", optional_text},
+        {resource_status, "ResourceStatus", optional_text}
+        ], XmlNode).
