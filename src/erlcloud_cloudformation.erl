@@ -16,7 +16,7 @@
           describe_stack_resources/2,
           describe_stack_resource/2,
           describe_stacks_all/2,
-          describe_stacks/3,
+          describe_stacks/2,
           get_stack_policy/2,
           get_template/2,
           get_template_summary/2,
@@ -53,7 +53,6 @@ list_stacks(Params, Config = #aws_config{}) ->
 
 -spec list_stack_resources_all(string(), aws_config()) -> {ok, cloudformation_list()}.
 list_stack_resources_all(Params, Config = #aws_config{}) ->
-    % cloudformation_request(Config, "ListStackResources", [{"StackName", StackName}]).
     list_all(fun list_stack_resources/2, Params, Config, []).
 
 -spec list_stack_resources(params(), aws_config()) -> {ok, cloudformation_list()}.
@@ -77,25 +76,15 @@ describe_stack_resource(Param, Config = #aws_config{}) ->
 
 -spec describe_stacks_all(params(), aws_config()) -> {ok, cloudformation_list()}.
 describe_stacks_all(Params, Config = #aws_config{}) ->
+    list_all(fun describe_stacks/2, Params, Config, []).
 
-    ExtraParams = lists:map(fun(T) ->
-        case T of
-            {stack_name, StackName} -> {"StackName", StackName}
-        end
-    end, Params),
+-spec describe_stacks(params(), aws_config()) -> {ok, cloudformation_list()}.
+describe_stacks(Params, Config = #aws_config{}) ->
+    {ok, XmlNode} = cloudformation_request(Config, "DescribeStacks", Params),
 
-    cloudformation_request(Config, "DescribeStacks", ExtraParams).
+    NextToken = erlcloud_xml:get_text("/DescribeStacksResponse/DescribeStacksResult/NextToken", XmlNode, undefined),
 
--spec describe_stacks(params(), string(), aws_config()) -> {ok, cloudformation_list()}.
-describe_stacks(Params, NextNode, Config = #aws_config{}) ->
-
-    ExtraParams = lists:map(fun(T) ->
-        case T of
-            {stack_name, StackName} -> {"StackName", StackName}
-        end
-    end, Params),
-
-    cloudformation_request(Config, "DescribeStacks", [{"NextNode", NextNode}, ExtraParams]).
+    [{next_token, NextToken}, extract_described_stacks_result(xmerl_xpath:string("/DescribeStacksResponse/DescribeStacksResult", XmlNode))].
 
 -spec get_stack_policy(string(), aws_config()) -> {ok, cloudformation_list()}.
 get_stack_policy(StackName, Config = #aws_config{}) ->
@@ -125,7 +114,6 @@ describe_stack_events(Params, NextToken, Config = #aws_config{}) ->
 
 -spec get_template(string(), aws_config()) -> {ok, cloudformation_list()}.
 get_template(StackName, Config = #aws_config{}) ->
-
     cloudformation_request(Config, "GetTemplate", [{"StackName", StackName}]).
 
 -spec get_template_summary(params(), aws_config()) -> {ok, cloudformation_list()}.
@@ -227,6 +215,35 @@ extract_resource(XmlNode) ->
 
 extract_stack_details(XmlNodes) ->
     lists:map(fun(T) -> erlcloud_xml:decode([{resources, "StackResourceDetail", {optional_map, fun extract_resource/1}}], T) end, XmlNodes).
+
+extract_described_stacks_result(XmlNodes) ->
+    lists:map(fun(T) -> erlcloud_xml:decode([{stacks, "Stacks", {optional_map, fun extract_described_stacks/1}}], T) end, XmlNodes).
+
+extract_described_stacks(XmlNode) ->
+    erlcloud_xml:decode([{member, "member", {optional_map, fun extract_described_stack/1}}], XmlNode).
+
+extract_described_stack(XmlNode) ->
+    erlcloud_xml:decode([
+            {stack_name, "StackName", optional_text},
+            {stack_id, "StackId", optional_text},
+            {creation_time, "CreationTime", optional_text},
+            {stack_status, "StackStatus", optional_text},
+            {disable_rollback, "DisableRollback", optional_text},
+            {outputs, "Outputs", {optional_map, fun extract_resource_outputs/1}}
+        ], XmlNode).
+
+extract_resource_outputs(XmlNode) ->
+    erlcloud_xml:decode([
+            {member, "member", {optional_map, fun extract_resource_output/1}}
+        ], XmlNode).
+
+extract_resource_output(XmlNode) ->
+    erlcloud_xml:decode([
+            {output_key, "OutputKey", optional_text},
+            {output_value, "OutputValue", optional_text}
+        ], XmlNode).
+
+
 
 
 
