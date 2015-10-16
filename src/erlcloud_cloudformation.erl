@@ -14,7 +14,7 @@
           list_stack_resources_all/2,
           list_stack_resources/2,
           describe_stack_resources/2,
-          describe_stack_resource/3,
+          describe_stack_resource/2,
           describe_stacks_all/2,
           describe_stacks/3,
           get_stack_policy/2,
@@ -69,11 +69,11 @@ describe_stack_resources(Params, Config = #aws_config{}) ->
     {ok, XmlNode} = cloudformation_request(Config, "DescribeStackResources", Params),
     extract_stack_resources_members(xmerl_xpath:string("/DescribeStackResourcesResponse/DescribeStackResourcesResult", XmlNode)).
 
--spec describe_stack_resource(string(), string(), aws_config) -> {ok, cloudformation_list()}.
-describe_stack_resource(StackName, LogicalResourceId, Config = #aws_config{}) ->
-    cloudformation_request(Config, "DescribeStackResource", [{"StackName", StackName},
-                                                             {"LogicalResourceId", LogicalResourceId}
-                                                            ]).
+-spec describe_stack_resource(params(), aws_config) -> {ok, cloudformation_list()}.
+describe_stack_resource(Param, Config = #aws_config{}) ->
+    {ok, XmlNode} = cloudformation_request(Config, "DescribeStackResource", Param),
+    extract_stack_details(xmerl_xpath:string("/DescribeStackResourceResponse/DescribeStackResourceResult", XmlNode)).
+
 
 -spec describe_stacks_all(params(), aws_config()) -> {ok, cloudformation_list()}.
 describe_stacks_all(Params, Config = #aws_config{}) ->
@@ -224,3 +224,9 @@ extract_resource(XmlNode) ->
         {timestamp, "Timestamp", optional_text},
         {resource_status, "ResourceStatus", optional_text}
         ], XmlNode).
+
+extract_stack_details(XmlNodes) ->
+    lists:map(fun(T) -> erlcloud_xml:decode([{resources, "StackResourceDetail", {optional_map, fun extract_resource/1}}], T) end, XmlNodes).
+
+
+
