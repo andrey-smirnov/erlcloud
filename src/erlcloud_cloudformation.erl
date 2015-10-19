@@ -23,7 +23,7 @@
           describe_account_limits/2,
           describe_account_limits_all/1,
           describe_stack_events_all/2,
-          describe_stack_events/3]).
+          describe_stack_events/2]).
 
 %%==============================================================================
 %% Cloud Formation API Functions
@@ -86,57 +86,45 @@ describe_stacks(Params, Config = #aws_config{}) ->
 
     [{next_token, NextToken}, extract_described_stacks_result(xmerl_xpath:string("/DescribeStacksResponse/DescribeStacksResult", XmlNode))].
 
--spec get_stack_policy(string(), aws_config()) -> {ok, cloudformation_list()}.
-get_stack_policy(StackName, Config = #aws_config{}) ->
-    cloudformation_request(Config, "GetStackPolicy", [{"StackName", StackName}]).
+-spec get_stack_policy(params(), aws_config()) -> {ok, cloudformation_list()}.
+get_stack_policy(Params, Config = #aws_config{}) ->
+    {ok, XmlNode} = cloudformation_request(Config, "GetStackPolicy", Params),
+
+    extract_stack_policy_body(xmerl_xpath:string("/GetStackPolicyResponse/GetStackPolicyResult", XmlNode)).
+
 
 -spec describe_stack_events_all(params(), aws_config()) -> {ok, cloudformation_list()}.
 describe_stack_events_all(Params, Config = #aws_config{}) ->
+    list_all(fun describe_stack_events/2, Params, Config, []).
 
-    ExtraParams = lists:map(fun(T) ->
-        case T of
-            {stack_name, StackName} -> {"StackName", StackName}
-        end
-    end, Params),
+-spec describe_stack_events(params(), aws_config()) -> {ok, cloudformation_list()}.
+describe_stack_events(Params, Config = #aws_config{}) ->
+    {ok, XmlNode} = cloudformation_request(Config, "DescribeStackEvents", Params),
 
-    cloudformation_request(Config, "DescribeStackEvents", ExtraParams).
+    NextToken = erlcloud_xml:get_text("/DescribeStackEventsResponse/DescribeStackEventsResult/NextToken", XmlNode, undefined),
 
--spec describe_stack_events(params(), string(), aws_config()) -> {ok, cloudformation_list()}.
-describe_stack_events(Params, NextToken, Config = #aws_config{}) ->
-
-    ExtraParams = lists:map(fun(T) ->
-        case T of
-            {stack_name, StackName} -> {"StackName", StackName}
-        end
-    end, Params),
-
-    cloudformation_request(Config, "DescribeStackEvents", [{"NextToken", NextToken} | ExtraParams]).
+    [{next_token, NextToken}, extract_described_stack_events_result(xmerl_xpath:string("/DescribeStackEventsResponse/DescribeStackEventsResult", XmlNode))].
 
 -spec get_template(string(), aws_config()) -> {ok, cloudformation_list()}.
 get_template(StackName, Config = #aws_config{}) ->
-    cloudformation_request(Config, "GetTemplate", [{"StackName", StackName}]).
+    {ok, XmlNode} = cloudformation_request(Config, "GetTemplate", [{"StackName", StackName}]),
+    extract_template_response(XmlNode).
 
 -spec get_template_summary(params(), aws_config()) -> {ok, cloudformation_list()}.
 get_template_summary(Params, Config = #aws_config{}) ->
 
-    ExtraParams = lists:map(fun(T) ->
-        case T of
-            {template_url, URL} -> {"TemplateURL", URL};
-            {template_body, Body} -> {"TemplateBody", Body};
-            {stack_name, StackName} -> {"StackName", StackName}
-        end
-    end, Params),
-
-    cloudformation_request(Config, "GetTemplateSummary", ExtraParams).
+    {ok, XmlNodes} = cloudformation_request(Config, "GetTemplateSummary", Params),
+    extract_template_summary_response(XmlNodes).
 
 -spec describe_account_limits_all(aws_config()) -> {ok, cloudformation_list()}.
 describe_account_limits_all(Config = #aws_config{}) ->
-
-    cloudformation_request(Config, "DescribeAccountLimits", []).
+    list_all(fun describe_account_limits/2, [], Config, []).
 
 -spec describe_account_limits(aws_config(), string()) -> {ok, cloudformation_list()}.
-describe_account_limits(Config = #aws_config{}, NextToken) ->
-    cloudformation_request(Config, "DescribeAccountLimits", [{"NextToken", NextToken}]).
+describe_account_limits(Params, Config = #aws_config{}) ->
+    {ok, XmlNodes} = cloudformation_request(Config, "DescribeAccountLimits", Params),
+    NextToken = erlcloud_xml:get_text("/DescribeAccountLimitsResponse/DescribeAccountLimitsResult/NextToken", XmlNodes, undefined),
+    [{next_token, NextToken},  extract_accout_limits_response(xmerl_xpath:string("/DescribeAccountLimitsResponse", XmlNodes))].
 
 %%==============================================================================
 %% Internal functions
@@ -243,6 +231,94 @@ extract_resource_output(XmlNode) ->
             {output_value, "OutputValue", optional_text}
         ], XmlNode).
 
+extract_stack_policy_body(XmlNodes) ->
+    lists:map(fun(T) -> erlcloud_xml:decode([
+                {stack_policy_body, "StackPolicyBody", optional_text}
+            ], T) end, XmlNodes).
+
+extract_described_stack_events_result(XmlNodes) ->
+    lists:map(fun(T) -> erlcloud_xml:decode([
+                {stack_events, "StackEvents", {optional_map, fun extract_stack_event_member/1}}
+            ], T) end, XmlNodes).
+
+extract_stack_event_member(XmlNode) ->
+    erlcloud_xml:decode([
+            {member, "member", {optional_map, fun extract_stack_event/1}}
+    ], XmlNode).
+
+extract_stack_event(XmlNode) ->
+    erlcloud_xml:decode([
+            {event_id, "EventId", optional_text},
+            {stack_id, "StackId", optional_text},
+            {stack_name, "StackName", optional_text},
+            {logical_resource_id, "LogicalResourceId", optional_text},
+            {physical_resource_id, "PhysicalResourceId", optional_text},
+            {resource_type, "ResourceType", optional_text},
+            {timestamp, "TimeStamp", optional_text},
+            {resource_status, "ResourceStatus", optional_text},
+            {resource_properties, "ResourceProperties", optional_text}
+    ], XmlNode).
+
+extract_template_response(XmlNodes) ->
+    erlcloud_xml:decode([
+                {template_result, "GetTemplateResult", {optional_map, fun extract_template_result/1}},
+                {response_meta, "ResponseMetadata", {optional_map, fun extract_template_meta_body/1}}
+            ], XmlNodes).
+
+extract_template_meta_body(XmlNode) ->
+    erlcloud_xml:decode([{request_id, "RequestId", optional_text}], XmlNode).
+
+extract_template_result(XmlNode) ->
+    erlcloud_xml:decode([{template_body, "TemplateBody", optional_text}], XmlNode).
+
+extract_template_summary_response(XmlNodes) ->
+    erlcloud_xml:decode([
+                {template_summary_result, "GetTemplateSummaryResult", {optional_map, fun extract_template_summary_result/1}},
+                {response_meta, "ResponseMetadata", {optional_map, fun extract_template_meta_body/1}}
+        ], XmlNodes).
+
+extract_template_summary_result(XmlNode) ->
+    erlcloud_xml:decode([
+                {description, "Description", optional_text},
+                {parameters, "Parameters", {optional_map, fun extract_template_parameters/1}},
+                {metadata, "Metadata", optional_text},
+                {version, "Version", optional_text}
+        ], XmlNode).
+
+extract_template_parameters(XmlNode) ->
+    erlcloud_xml:decode([
+                {member, "member", {optional_map, fun extract_template_parameter/1}}
+        ], XmlNode).
+
+extract_template_parameter(XmlNode) ->
+    erlcloud_xml:decode([
+                {no_echo, "NoEcho", optional_text},
+                {parameter_key, "ParameterKey", optional_text},
+                {description, "Description", optional_text},
+                {parameter_type, "ParameterType", optional_text}
+        ], XmlNode).
+
+extract_accout_limits_response(XmlNodes) ->
+    lists:map(fun(T) -> erlcloud_xml:decode([
+            {describe_account_limits_result, "DescribeAccountLimitsResult", {optional_map, fun extract_account_limits_result/1}}
+        ], T) end, XmlNodes).
+
+extract_account_limits_result(XmlNode) ->
+    erlcloud_xml:decode([
+            {account_limits, "AccountLimits", {optional_map, fun extract_account_limits/1}},
+            {response_meta, "ResponseMetadata", {optional_map, fun extract_template_meta_body/1}}
+        ], XmlNode).
+
+extract_account_limits(XmlNode) ->
+    erlcloud_xml:decode([
+            {member, "member", {optional_map, fun extract_account_limit/1}}
+        ], XmlNode).
+
+extract_account_limit(XmlNode) ->
+    erlcloud_xml:decode([
+            {name, "Name", optional_text},
+            {value, "Value", optional_text}
+        ], XmlNode).
 
 
 
