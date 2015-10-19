@@ -5,8 +5,18 @@
 
 -define(API_VERSION, "2010-05-15").
 
+-type access_key_id() :: string().
+-type secret_access_key() :: string().
+
 -type params() :: proplists:proplist().
 -type cloudformation_list() :: proplists:proplist().
+
+%% Library initialization
+-export([
+    configure/2,
+    new/2
+]).
+
 
 %% Cloud Formation API Functions
 -export ([list_stacks_all/2,
@@ -24,6 +34,24 @@
           describe_account_limits_all/1,
           describe_stack_events_all/2,
           describe_stack_events/2]).
+
+
+%%==============================================================================
+%% Library initialization
+%%==============================================================================
+
+-spec configure(access_key_id(), secret_access_key()) -> ok.
+configure(AccessKeyID, SecretAccessKey) ->
+    put(aws_config, new(AccessKeyID, SecretAccessKey)),
+    ok.
+
+
+-spec new(access_key_id(), secret_access_key()) -> #aws_config{}.
+new(AccessKeyID, SecretAccessKey) ->
+    #aws_config{
+        access_key_id = AccessKeyID,
+        secret_access_key = SecretAccessKey
+    }.
 
 %%==============================================================================
 %% Cloud Formation API Functions
