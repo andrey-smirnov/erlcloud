@@ -94,7 +94,7 @@ list_stack_resources(Params, Config = #aws_config{}) ->
 -spec describe_stack_resources(string(), aws_config()) -> {ok, cloudformation_list()}.
 describe_stack_resources(Params, Config = #aws_config{}) ->
     {ok, XmlNode} = cloudformation_request(Config, "DescribeStackResources", Params),
-    extract_stack_resources_members(xmerl_xpath:string("/DescribeStackResourcesResponse/DescribeStackResourcesResult", XmlNode)).
+    extract_stack_resources_members(xmerl_xpath:string("/DescribeStackResourcesResponse", XmlNode)).
 
 -spec describe_stack_resource(params(), aws_config) -> {ok, cloudformation_list()}.
 describe_stack_resource(Param, Config = #aws_config{}) ->
@@ -112,7 +112,7 @@ describe_stacks(Params, Config = #aws_config{}) ->
 
     NextToken = erlcloud_xml:get_text("/DescribeStacksResponse/DescribeStacksResult/NextToken", XmlNode, undefined),
 
-    [{next_token, NextToken}, extract_described_stacks_result(xmerl_xpath:string("/DescribeStacksResponse/DescribeStacksResult", XmlNode))].
+    [{next_token, NextToken}, extract_described_stacks_result(xmerl_xpath:string("/DescribeStacksResponse", XmlNode))].
 
 -spec get_stack_policy(params(), aws_config()) -> {ok, cloudformation_list()}.
 get_stack_policy(Params, Config = #aws_config{}) ->
@@ -213,7 +213,10 @@ extract_list_resource(XmlNode) ->
         ], XmlNode).
 
 extract_stack_resources_members(XmlNodes) ->
-    lists:map(fun(T) -> erlcloud_xml:decode([{resources, "StackResources", {optional_map, fun extract_member_resources/1}}], T) end, XmlNodes).
+    lists:map(fun(T) -> erlcloud_xml:decode([
+        {resources, "DescribeStackResourcesResult/StackResources", {optional_map, fun extract_member_resources/1}},
+        {response_meta, "ResponseMetadata", {optional_map, fun extract_template_meta_body/1}}
+        ], T) end, XmlNodes).
 
 extract_member_resources(XmlNode) ->
     erlcloud_xml:decode([{member, "member", {optional_map, fun extract_resource/1}}], XmlNode).
@@ -233,7 +236,10 @@ extract_stack_details(XmlNodes) ->
     lists:map(fun(T) -> erlcloud_xml:decode([{resources, "StackResourceDetail", {optional_map, fun extract_resource/1}}], T) end, XmlNodes).
 
 extract_described_stacks_result(XmlNodes) ->
-    lists:map(fun(T) -> erlcloud_xml:decode([{stacks, "Stacks", {optional_map, fun extract_described_stacks/1}}], T) end, XmlNodes).
+    lists:map(fun(T) -> erlcloud_xml:decode([
+        {stacks, "DescribeStacksResult/Stacks", {optional_map, fun extract_described_stacks/1}},
+        {response_meta, "ResponseMetadata", {optional_map, fun extract_template_meta_body/1}}
+    ], T) end, XmlNodes).
 
 extract_described_stacks(XmlNode) ->
     erlcloud_xml:decode([{member, "member", {optional_map, fun extract_described_stack/1}}], XmlNode).
@@ -261,14 +267,9 @@ extract_resource_output(XmlNode) ->
 
 extract_stack_policy_body(XmlNodes) ->
     lists:map(fun(T) -> erlcloud_xml:decode([
-                {stack_policy_body, "GetStackPolicyResult", {optional_map, fun extract_policy_body/1}},
+                {stack_policy_body, "GetStackPolicyResult/StackPolicyBody/", optional_text},
                 {response_meta, "ResponseMetadata", {optional_map, fun extract_template_meta_body/1}}
             ], T) end, XmlNodes).
-
-extract_policy_body(XmlNodes) ->
-    erlcloud_xml:decode([
-            {stack_policy_body, "StackPolicyBody", optional_text}
-        ], XmlNodes).
 
 extract_described_stack_events_result(XmlNodes) ->
     lists:map(fun(T) -> erlcloud_xml:decode([
