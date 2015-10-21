@@ -118,7 +118,7 @@ describe_stacks(Params, Config = #aws_config{}) ->
 get_stack_policy(Params, Config = #aws_config{}) ->
     {ok, XmlNode} = cloudformation_request(Config, "GetStackPolicy", Params),
 
-    extract_stack_policy_body(xmerl_xpath:string("/GetStackPolicyResponse/GetStackPolicyResult", XmlNode)).
+    extract_stack_policy_body(xmerl_xpath:string("/GetStackPolicyResponse", XmlNode)).
 
 
 -spec describe_stack_events_all(params(), aws_config()) -> {ok, cloudformation_list()}.
@@ -261,8 +261,14 @@ extract_resource_output(XmlNode) ->
 
 extract_stack_policy_body(XmlNodes) ->
     lists:map(fun(T) -> erlcloud_xml:decode([
-                {stack_policy_body, "StackPolicyBody", optional_text}
+                {stack_policy_body, "GetStackPolicyResult", {optional_map, fun extract_policy_body/1}},
+                {response_meta, "ResponseMetadata", {optional_map, fun extract_template_meta_body/1}}
             ], T) end, XmlNodes).
+
+extract_policy_body(XmlNodes) ->
+    erlcloud_xml:decode([
+            {stack_policy_body, "StackPolicyBody", optional_text}
+        ], XmlNodes).
 
 extract_described_stack_events_result(XmlNodes) ->
     lists:map(fun(T) -> erlcloud_xml:decode([
