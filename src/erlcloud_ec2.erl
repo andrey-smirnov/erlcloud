@@ -225,7 +225,7 @@
 -type spot_fleet_instance_id() :: string().
 -type tags_filter_name() :: key | resource_id | resource_type | value.
 -type tags_filter() :: {tags_filter_name(), [string()]}.
--type tags_filter_list() :: [tags_filter()].
+-type tags_filter_list() :: [tags_filter()] | none.
 
 
 -spec new(string(), string()) -> aws_config().
@@ -1141,7 +1141,7 @@ describe_dhcp_options() ->
 -spec describe_dhcp_options(aws_config() | filter_list() | none) -> proplist().
 describe_dhcp_options(Config) when is_record(Config, aws_config) ->
     describe_dhcp_options(none, Config);
-describe_dhcp_options(Filter) when is_list(Filter) ->
+describe_dhcp_options(Filter) when is_list(Filter) orelse Filter =:= none ->
     describe_dhcp_options(Filter, default_config()).
 
 -spec describe_dhcp_options(none | filter_list(), aws_config()) -> proplist().
@@ -1408,16 +1408,16 @@ describe_instances(InstanceIDs) ->
                         (ec2_instances_ids(), aws_config()) -> ok_error(proplist());
                         (ec2_max_result(), ec2_token()) -> ok_error(proplist(), ec2_token()).
 describe_instances(InstanceIDs, Filter)
-    when is_list(InstanceIDs), is_list(Filter) ->
+    when is_list(InstanceIDs), is_list(Filter) orelse Filter =:= none ->
     describe_instances(InstanceIDs, Filter, default_config());
 describe_instances(InstanceIDs, Config)
     when is_list(InstanceIDs), is_record(Config, aws_config) ->
     describe_instances(InstanceIDs, [], Config).
 
 -spec describe_instances(ec2_instances_ids(), filter_list(), aws_config()) -> ok_error(proplist());
-                         (filter_list(), ec2_max_result(), ec2_token()) -> ok_error(proplist(), ec2_token()).
+                        (filter_list(), ec2_max_result(), ec2_token()) -> ok_error(proplist(), ec2_token()).
 describe_instances(InstanceIDs, Filter, Config)
-    when is_list(InstanceIDs), is_list(Filter), is_record(Config, aws_config) ->
+    when is_list(InstanceIDs), is_list(Filter) orelse Filter =:= none , is_record(Config, aws_config) ->
     Params = erlcloud_aws:param_list(InstanceIDs, "InstanceId") ++ list_to_ec2_filter(Filter),
     case ec2_query(Config, "DescribeInstances", Params, ?NEW_API_VERSION) of
         {ok, Doc} ->
@@ -1426,13 +1426,15 @@ describe_instances(InstanceIDs, Filter, Config)
         {error, _} = E -> E
     end;
 describe_instances(Filter, MaxResults, NextToken)
-    when is_list(Filter), is_integer(MaxResults), is_list(NextToken) orelse NextToken =:= undefined ->
+    when is_list(Filter) orelse Filter =:= none,
+         is_integer(MaxResults),
+         is_list(NextToken) orelse NextToken =:= undefined ->
     describe_instances(Filter, MaxResults, NextToken, default_config()).
 
 -spec describe_instances(filter_list(), ec2_max_result(), ec2_token(), aws_config())
     -> ok_error(proplist(), ec2_token()).
 describe_instances(Filter, MaxResults, NextToken, Config)
-    when is_list(Filter),
+    when is_list(Filter) orelse Filter =:= none,
          is_integer(MaxResults) andalso MaxResults >= ?INSTANCES_MR_MIN andalso MaxResults =< ?INSTANCES_MR_MAX,
          is_list(NextToken) orelse NextToken =:= undefined,
          is_record(Config, aws_config) ->
@@ -1517,12 +1519,12 @@ describe_instance_status(InstanceID)
 -spec describe_instance_status(ec2_param_list(), filter_list()) -> ok_error(proplist());
                               (ec2_max_result(), ec2_token()) -> ok_error(proplist(), ec2_token()).
 describe_instance_status(Params, Filter)
-    when is_list(Params), is_list(Filter) ->
+    when is_list(Params), is_list(Filter) orelse Filter =:= none ->
     describe_instance_status(Params, Filter, default_config()).
 
 -spec describe_instance_status(ec2_param_list(), filter_list(), aws_config()) -> ok_error(proplist()).
 describe_instance_status(Params, Filter, Config)
-    when is_list(Params), is_list(Filter), is_record(Config, aws_config) ->
+    when is_list(Params), is_list(Filter) orelse Filter =:= none, is_record(Config, aws_config) ->
     AllParams = Params ++ list_to_ec2_filter(Filter),
     case ec2_query(Config, "DescribeInstanceStatus", AllParams, ?NEW_API_VERSION) of
         {ok, Doc} ->
@@ -1534,13 +1536,13 @@ describe_instance_status(Params, Filter, Config)
 -spec describe_instance_status(ec2_param_list(), filter_list(), ec2_max_result(), ec2_token())
     -> ok_error(proplist(), ec2_token()).
 describe_instance_status(Params, Filter, MaxResults, NextToken)
-    when is_list(Params), is_list(Filter), is_integer(MaxResults), is_list(NextToken) orelse NextToken =:= undefined ->
+    when is_list(Params), is_list(Filter) orelse Filter =:= none, is_integer(MaxResults), is_list(NextToken) orelse NextToken =:= undefined ->
     describe_instance_status(Params, Filter, MaxResults, NextToken, default_config()).
 
 -spec describe_instance_status(ec2_param_list(), filter_list(), ec2_max_result(), ec2_token(), aws_config())
     -> ok_error(proplist(), ec2_token()).
 describe_instance_status(Params, Filter, MaxResults, NextToken, Config)
-    when is_list(Params),is_list(Filter),
+    when is_list(Params), is_list(Filter) orelse Filter =:= none,
          is_integer(MaxResults), MaxResults >= ?SPOT_INSTANCE_STATUS_MR_MIN, MaxResults =< ?SPOT_INSTANCE_STATUS_MR_MAX,
          is_list(NextToken) orelse NextToken =:= undefined,
          is_record(Config, aws_config) ->
@@ -2002,11 +2004,11 @@ describe_security_groups_filtered(Filter, Config)->
 
 %
 % describe_security_groups functions above are left for interface backward compatibility.
--spec describe_security_groups(list(), list(), list(), aws_config()) -> [proplist()].
+-spec describe_security_groups(list(), list(), filter_list(), aws_config()) -> [proplist()].
 describe_security_groups(GroupIds, GroupNames, Filters, Config)
   when is_list(GroupIds),
        is_list(GroupNames),
-       is_list(Filters) ->
+       is_list(Filters) orelse Filters =:= none ->
     Params = erlcloud_aws:param_list(GroupIds, "GroupId") ++
         erlcloud_aws:param_list(GroupNames, "GroupName") ++
         list_to_ec2_filter(Filters),
@@ -2345,17 +2347,17 @@ extract_spot_price_history(Node) ->
 describe_subnets() ->
     describe_subnets(none, default_config()).
 
--spec describe_subnets([none | filter_list() | string()] | aws_config()) -> proplist().
+-spec describe_subnets(filter_list() | aws_config()) -> proplist().
 describe_subnets(Config) when is_record(Config, aws_config) ->
     describe_subnets(none, Config);
-describe_subnets(Filter) when is_list(Filter) ->
+describe_subnets(Filter) when is_list(Filter) orelse Filter =:= none ->
     describe_subnets(Filter, default_config()).
 
 -spec describe_subnets(none | filter_list(), aws_config()) -> proplist().
 describe_subnets(Filter, Config) ->
     describe_subnets([], Filter, Config).
 
--spec describe_subnets(list(), none | filter_list(), aws_config()) -> proplist().
+-spec describe_subnets(list(), filter_list(), aws_config()) -> proplist().
 describe_subnets(SubnetIds, Filter, Config)
         when is_list(SubnetIds) ->
     Params = erlcloud_aws:param_list(SubnetIds, "SubnetId") ++ list_to_ec2_filter(Filter),
@@ -3162,7 +3164,7 @@ describe_tags() ->
 -spec describe_tags(tags_filter_list()) -> ok_error(proplist());
 (aws_config()) -> ok_error(proplist()).
 describe_tags(Filters)
-    when is_list(Filters) ->
+    when is_list(Filters) orelse Filters =:= none ->
     describe_tags(Filters, default_config());
 describe_tags(Config)
     when is_record(Config, aws_config) ->
@@ -3170,16 +3172,22 @@ describe_tags(Config)
 
 -spec describe_tags(tags_filter_list(), aws_config()) -> ok_error(proplist()).
 describe_tags(Filters, Config)
-    when is_list(Filters), is_record(Config, aws_config) ->
-    {Params, _} =
-        lists:foldl(
-            fun({Name, Values}, {Acc, Index}) ->
-                I = integer_to_list(Index),
-                Key = "Filter."++I++".Name",
-                Prefix = "Filter."++I++".Value.",
-                {value_list_params(Values, Prefix) ++ [{Key, filter_name(Name)} | Acc], Index + 1}
-            end, {[], 1}, Filters),
-    case ec2_query(Config, "DescribeTags", Params, ?NEW_API_VERSION) of
+    when is_list(Filters) orelse Filters =:= none, is_record(Config, aws_config) ->
+    FilterParams = case Filters of  %%TODO replace with list_to_ec2_filter(Filters) ?
+                none ->
+                    [];
+                Filters ->
+                    {FilterNamesValues, _} =
+                        lists:foldl(
+                            fun({Name, Values}, {Acc, Index}) ->
+                                I = integer_to_list(Index),
+                                Key = "Filter."++I++".Name",
+                                Prefix = "Filter."++I++".Value.",
+                                {value_list_params(Values, Prefix) ++ [{Key, filter_name(Name)} | Acc], Index + 1}
+                            end, {[], 1}, Filters),
+                    FilterNamesValues
+            end,
+    case ec2_query(Config, "DescribeTags", FilterParams, ?NEW_API_VERSION) of
         {ok, Doc} ->
             Tags = extract_results("DescribeTagsResponse", "tagSet", fun extract_tag/1, Doc),
             {ok, Tags};
@@ -3188,26 +3196,32 @@ describe_tags(Filters, Config)
 
 -spec describe_tags(tags_filter_list(), ec2_max_result(), ec2_token()) -> ok_error(proplist(), ec2_token()).
 describe_tags(Filters, MaxResults, NextToken)
-    when is_list(Filters), is_integer(MaxResults), is_list(NextToken)  orelse NextToken =:= undefined ->
+    when is_list(Filters) orelse Filters =:= none, is_integer(MaxResults), is_list(NextToken)  orelse NextToken =:= undefined ->
     describe_tags(Filters, MaxResults, NextToken, default_config()).
 
 -spec describe_tags(tags_filter_list(), ec2_max_result(), ec2_token(), aws_config())
     -> ok_error(proplist(), ec2_token()).
 describe_tags(Filters, MaxResults, NextToken, Config)
-    when is_list(Filters),
-    is_integer(MaxResults), MaxResults >= ?TAGS_MR_MIN, MaxResults =< ?TAGS_MR_MAX,
-    is_list(NextToken) orelse NextToken =:= undefined,
-    is_record(Config, aws_config) ->
-    {FilterParams, _} =
-        lists:foldl(
-            fun({Name, Values}, {Acc, Index}) ->
-                I = integer_to_list(Index),
-                Key = "Filter."++I++".Name",
-                Prefix = "Filter."++I++".Value.",
-                {value_list_params(Values, Prefix) ++ [{Key, filter_name(Name)} | Acc], Index + 1}
-            end, {[], 1}, Filters),
+    when is_list(Filters) orelse Filters =:= none,
+         is_integer(MaxResults), MaxResults >= ?TAGS_MR_MIN, MaxResults =< ?TAGS_MR_MAX,
+         is_list(NextToken) orelse NextToken =:= undefined,
+         is_record(Config, aws_config) ->
+    FilterParams = case Filters of  %%TODO replace with list_to_ec2_filter(Filters) ?
+                       none ->
+                           [];
+                       Filters ->
+                           {FilterNamesValues, _} =
+                               lists:foldl(
+                                   fun({Name, Values}, {Acc, Index}) ->
+                                       I = integer_to_list(Index),
+                                       Key = "Filter."++I++".Name",
+                                       Prefix = "Filter."++I++".Value.",
+                                       {value_list_params(Values, Prefix) ++ [{Key, filter_name(Name)} | Acc], Index + 1}
+                                   end, {[], 1}, Filters),
+                           FilterNamesValues
+                   end,
     Params = [{"MaxResults", MaxResults}, {"NextToken", NextToken}] ++
-        FilterParams,
+             FilterParams,
     case ec2_query(Config, "DescribeTags", Params, ?NEW_API_VERSION) of
         {ok, Doc} ->
             Tags = extract_results("DescribeTagsResponse", "tagSet", fun extract_tag/1, Doc),
