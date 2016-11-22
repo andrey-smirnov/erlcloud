@@ -205,7 +205,7 @@
 -define(RESERVED_INSTANCES_OFFERINGS_MR_MIN, 5).
 -define(RESERVED_INSTANCES_OFFERINGS_MR_MAX, 1000).
 
--type filter_list() :: [{string(),[string()]}].
+-type filter_list() :: [{string() | atom(),[string()]}] | none.
 -type ec2_param_list() :: [{string(),string()}].
 -type ec2_selector() :: proplist().
 -type ec2_token() :: string() | undefined.
@@ -223,9 +223,6 @@
 -type describe_spot_fleet_instances_return() ::
     {ok, [{instances, [proplist()]} | {next_token, string()}]} | {error, term()}.
 -type spot_fleet_instance_id() :: string().
--type tags_filter_name() :: key | resource_id | resource_type | value.
--type tags_filter() :: {tags_filter_name(), [string()]}.
--type tags_filter_list() :: [tags_filter()] | none.
 
 
 -spec new(string(), string()) -> aws_config().
@@ -3161,7 +3158,7 @@ delete_tags(ResourceIds, TagsList, Config) when is_list(ResourceIds)->
 describe_tags() ->
     describe_tags([]).
 
--spec describe_tags(tags_filter_list()) -> ok_error(proplist());
+-spec describe_tags(filter_list()) -> ok_error(proplist());
 (aws_config()) -> ok_error(proplist()).
 describe_tags(Filters)
     when is_list(Filters) orelse Filters =:= none ->
@@ -3170,58 +3167,31 @@ describe_tags(Config)
     when is_record(Config, aws_config) ->
     describe_tags([], Config)     .
 
--spec describe_tags(tags_filter_list(), aws_config()) -> ok_error(proplist()).
+-spec describe_tags(filter_list(), aws_config()) -> ok_error(proplist()).
 describe_tags(Filters, Config)
     when is_list(Filters) orelse Filters =:= none, is_record(Config, aws_config) ->
-    FilterParams = case Filters of  %%TODO replace with list_to_ec2_filter(Filters) ?
-                none ->
-                    [];
-                Filters ->
-                    {FilterNamesValues, _} =
-                        lists:foldl(
-                            fun({Name, Values}, {Acc, Index}) ->
-                                I = integer_to_list(Index),
-                                Key = "Filter."++I++".Name",
-                                Prefix = "Filter."++I++".Value.",
-                                {value_list_params(Values, Prefix) ++ [{Key, filter_name(Name)} | Acc], Index + 1}
-                            end, {[], 1}, Filters),
-                    FilterNamesValues
-            end,
-    case ec2_query(Config, "DescribeTags", FilterParams, ?NEW_API_VERSION) of
+    Params = list_to_ec2_filter(Filters),
+    case ec2_query(Config, "DescribeTags", Params, ?NEW_API_VERSION) of
         {ok, Doc} ->
             Tags = extract_results("DescribeTagsResponse", "tagSet", fun extract_tag/1, Doc),
             {ok, Tags};
         {error, _} = E -> E
     end.
 
--spec describe_tags(tags_filter_list(), ec2_max_result(), ec2_token()) -> ok_error(proplist(), ec2_token()).
+-spec describe_tags(filter_list(), ec2_max_result(), ec2_token()) -> ok_error(proplist(), ec2_token()).
 describe_tags(Filters, MaxResults, NextToken)
     when is_list(Filters) orelse Filters =:= none, is_integer(MaxResults), is_list(NextToken)  orelse NextToken =:= undefined ->
     describe_tags(Filters, MaxResults, NextToken, default_config()).
 
--spec describe_tags(tags_filter_list(), ec2_max_result(), ec2_token(), aws_config())
+-spec describe_tags(filter_list(), ec2_max_result(), ec2_token(), aws_config())
     -> ok_error(proplist(), ec2_token()).
 describe_tags(Filters, MaxResults, NextToken, Config)
     when is_list(Filters) orelse Filters =:= none,
          is_integer(MaxResults), MaxResults >= ?TAGS_MR_MIN, MaxResults =< ?TAGS_MR_MAX,
          is_list(NextToken) orelse NextToken =:= undefined,
          is_record(Config, aws_config) ->
-    FilterParams = case Filters of  %%TODO replace with list_to_ec2_filter(Filters) ?
-                       none ->
-                           [];
-                       Filters ->
-                           {FilterNamesValues, _} =
-                               lists:foldl(
-                                   fun({Name, Values}, {Acc, Index}) ->
-                                       I = integer_to_list(Index),
-                                       Key = "Filter."++I++".Name",
-                                       Prefix = "Filter."++I++".Value.",
-                                       {value_list_params(Values, Prefix) ++ [{Key, filter_name(Name)} | Acc], Index + 1}
-                                   end, {[], 1}, Filters),
-                           FilterNamesValues
-                   end,
     Params = [{"MaxResults", MaxResults}, {"NextToken", NextToken}] ++
-             FilterParams,
+             list_to_ec2_filter(Filters),
     case ec2_query(Config, "DescribeTags", Params, ?NEW_API_VERSION) of
         {ok, Doc} ->
             Tags = extract_results("DescribeTagsResponse", "tagSet", fun extract_tag/1, Doc),
@@ -3229,21 +3199,6 @@ describe_tags(Filters, MaxResults, NextToken, Config)
             {ok, Tags, NewNextToken};
         {error, _} = E -> E
     end.
-
--spec filter_name(tags_filter_name()) -> string().
-filter_name(key) -> "key";
-filter_name(resource_id) -> "resource-id";
-filter_name(resource_type) -> "resource-type";
-filter_name(value) -> "value".
-
--spec value_list_params([string()], string()) -> [{string(), string()}].
-value_list_params(Values, Prefix) ->
-    {Params, _} = lists:foldl(fun(Value, {Acc, Index}) ->
-                                      I = integer_to_list(Index),
-                                      Key = Prefix ++ I,
-                                      {[{Key, Value} | Acc], Index + 1}
-                              end, {[], 1}, Values),
-    Params.
 
 -spec extract_tag(term()) -> #ec2_tag{}.
 extract_tag(Node) ->
@@ -3389,6 +3344,10 @@ list_to_ec2_filter(List) ->
 
 list_to_ec2_filter([], _Count, Res) ->
     Res;
+list_to_ec2_filter([{N, V}|T], Count, Res)
+    when is_atom(N) ->
+    NewName = [case Char of $_ -> $-; _ -> Char end || Char <- atom_to_list(N)],
+    list_to_ec2_filter([{NewName, V}|T], Count, Res);
 list_to_ec2_filter([{N, V}|T], Count, Res) ->
     Tup = {io_lib:format("Filter.~p.Name", [Count]), N},
     Vals = list_to_ec2_values(V, Count, 1, []),
